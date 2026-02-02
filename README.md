@@ -2,6 +2,8 @@
 
 MCP (Model Context Protocol) for an AI-powered personal assistant: **Google Service MCP code is in this repo**, plus config for Slack, Jira, and GitHub.
 
+![Daily AI recording](./assets/daily_ai_recording.gif)
+
 ## Overview
 
 This repository contains:
