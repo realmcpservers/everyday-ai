@@ -1,0 +1,47 @@
+{
+  "mcpServers": {
+    "google-service": {
+      "command": "node",
+      "args": ["google-workspace-mcp/dist/index.js"]
+    },
+    "slack-mcp-server": {
+      "command": "podman",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "SLACK_BOT_TOKEN",
+        "-e",
+        "SLACK_TEAM_ID",
+        "-e",
+        "SLACK_CHANNEL_IDS",
+        "docker.io/mcp/slack"
+      ],
+      "env": {
+        "SLACK_BOT_TOKEN": "<YOUR_SLACK_BOT_TOKEN>",
+        "SLACK_TEAM_ID": "<YOUR_SLACK_TEAM_ID>",
+        "SLACK_CHANNEL_IDS": "<YOUR_SLACK_CHANNEL_IDS>"
+      }
+    },
+    "mcp-atlassian": {
+      "command": "uvx",
+      "args": [
+        "mcp-atlassian",
+        "--jira-url",
+        "https://issues.redhat.com",
+        "--jira-personal-token",
+        "<YOUR_JIRA_PERSONAL_TOKEN>",
+        "--transport",
+        "stdio"
+      ],
+      "disabled": false
+    },
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "<YOUR_GITHUB_PAT>"
+      }
+    }
+  }
+}

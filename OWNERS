@@ -1,0 +1,18 @@
+# Code owners for everyday-ai
+# See https://go.k8s.io/owners
+
+approvers:
+  - jyejare
+  - GowthamShanmugam
+  - dchourasia
+  - kapil27
+  - ChughShilpa
+  - sukumars321
+
+reviewers:
+  - jyejare
+  - GowthamShanmugam
+  - dchourasia
+  - kapil27
+  - ChughShilpa
+  - sukumars321
