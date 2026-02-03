@@ -83,24 +83,48 @@ Uses the official Slack MCP Docker image.
 
 #### Get Slack Credentials
 
-1. Go to [Slack API](https://api.slack.com/apps) and create a new app
-2. Add Bot Token Scopes under **OAuth & Permissions**
-3. Install the app to your workspace
-4. Copy the **Bot User OAuth Token** (starts with `xoxb-` or `xoxp-`)
-5. Get your **Team ID** from Slack workspace settings
-6. Get **Channel IDs** for channels you want to access
+1.  Create a Slack App:
+    -   Visit the [Slack Apps page](https://api.slack.com/apps)
+    -   Click "Create New App"
+    -   Choose "From scratch"
+    -   Name your app and select your workspace
+2.  Configure Bot Token Scopes: Navigate to "OAuth & Permissions" and add these scopes:
+    -   `channels:history` - View messages and other content in public channels
+    -   `channels:read` - View basic channel information
+    -   `chat:write` - Send messages as the app
+    -   `reactions:write` - Add emoji reactions to messages
+    -   `users:read` - View users and their basic information
+    -   `users.profile:read` - View detailed profiles about users
+3.  Install App to Workspace:
+    -   Click "Install to Workspace" and authorize the app
+    -   Save the "Bot User OAuth Token" that starts with `xoxb-`
+4.  Get your Team ID (starts with a `T`) by following [this guidance](https://slack.com/help/articles/221769328-Locate-your-Slack-URL-or-ID#find-your-workspace-or-org-id)
 
 #### Configure Environment
 
-Set the following in `mcp-servers-config.json`:
+Set the following in `mcp.json`:
 
 ```json
-"env": {
-  "SLACK_BOT_TOKEN": "<YOUR_SLACK_BOT_TOKEN>",
-  "SLACK_TEAM_ID": "<YOUR_SLACK_TEAM_ID>",
-  "SLACK_CHANNEL_IDS": "<YOUR_SLACK_CHANNEL_IDS>"
+"slack-mcp-server": {
+    "command": "podman",
+    "args": [
+    "run", "-i", "--rm",
+    "-e",
+    "SLACK_BOT_TOKEN",
+    "-e",
+    "SLACK_TEAM_ID",
+    "-e",
+    "SLACK_CHANNEL_IDS",
+    "docker.io/mcp/slack"
+    ],
+    "env": {
+    "SLACK_BOT_TOKEN": "<YOUR_SLACK_BOT_TOKEN>",
+    "SLACK_TEAM_ID": "<YOUR_SLACK_TEAM_ID>",
+    "SLACK_CHANNEL_IDS": "<YOUR_SLACK_CHANNEL_IDS>"
+    }
 }
 ```
+
 
 ---
 
