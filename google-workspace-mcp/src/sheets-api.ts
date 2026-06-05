@@ -9,6 +9,14 @@ import type { sheets_v4 } from "googleapis";
 import { logger } from "./logger.js";
 import type { GoogleAuth, SpreadsheetInfo, SheetInfo, CellData } from "./types.js";
 
+/**
+ * Sanitize search query to prevent Drive API query injection.
+ * Only allows alphanumeric characters, spaces, hyphens, underscores, and periods.
+ */
+function sanitizeSearchQuery(query: string): string {
+  return query.replace(/[^a-zA-Z0-9\s\-_.]/g, "");
+}
+
 export class GoogleSheetsService {
   private sheets: sheets_v4.Sheets;
   private drive: ReturnType<typeof google.drive>;
@@ -58,10 +66,14 @@ export class GoogleSheetsService {
     maxResults: number = 10
   ): Promise<Array<{ id: string; name: string; modifiedTime: string }>> {
     try {
-      logger.debug(`Searching spreadsheets: ${query}`);
+      const sanitizedQuery = sanitizeSearchQuery(query);
+      if (!sanitizedQuery.trim()) {
+        throw new Error("Invalid search query: query contains no valid characters");
+      }
+      logger.debug(`Searching spreadsheets: ${sanitizedQuery}`);
 
       const response = await this.drive.files.list({
-        q: `mimeType='application/vnd.google-apps.spreadsheet' and name contains '${query.replace(/'/g, "\\'")}'`,
+        q: `mimeType='application/vnd.google-apps.spreadsheet' and name contains '${sanitizedQuery}'`,
         pageSize: maxResults,
         fields: "files(id, name, modifiedTime)",
         orderBy: "modifiedTime desc",
@@ -96,8 +108,8 @@ export class GoogleSheetsService {
         sheetId: sheet.properties?.sheetId || 0,
         title: sheet.properties?.title || "Untitled",
         index: sheet.properties?.index || 0,
-        rowCount: sheet.properties?.gridProperties?.rowCount || 0,
-        columnCount: sheet.properties?.gridProperties?.columnCount || 0,
+        rowCount: sheet.properties?.gridProperties?.rowCount ?? undefined,
+        columnCount: sheet.properties?.gridProperties?.columnCount ?? undefined,
       }));
 
       return {
@@ -123,11 +135,10 @@ export class GoogleSheetsService {
         spreadsheetId,
         range,
         valueRenderOption: "FORMATTED_VALUE",
+      });
+
       const values = (response.data.values || []).map((row) =>
-        row.map((cell) => {
-          if (cell === null || cell === undefined) return null;
-          return String(cell);
-        })
+        row.map((cell) => (cell === null || cell === undefined ? "" : String(cell)))
       );
 
       return {
@@ -215,8 +226,8 @@ export class GoogleSheetsService {
         sheetId: sheet.properties?.sheetId || 0,
         title: sheet.properties?.title || "Sheet1",
         index: sheet.properties?.index || 0,
-        rowCount: sheet.properties?.gridProperties?.rowCount || 1000,
-        columnCount: sheet.properties?.gridProperties?.columnCount || 26,
+        rowCount: sheet.properties?.gridProperties?.rowCount ?? undefined,
+        columnCount: sheet.properties?.gridProperties?.columnCount ?? undefined,
       }));
 
       logger.info(`Spreadsheet created: ${data.spreadsheetId}`);

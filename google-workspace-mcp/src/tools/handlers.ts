@@ -1083,7 +1083,12 @@ export async function handleGetSpreadsheet(args: unknown): Promise<ToolResponse>
     const spreadsheet = await service.getSpreadsheet(spreadsheet_id);
 
     const sheetsFormatted = spreadsheet.sheets
-      .map((sheet) => `- **${sheet.title}** (${sheet.rowCount} rows x ${sheet.columnCount} cols)`)
+      .map((sheet) => {
+        const dimensions = sheet.rowCount != null && sheet.columnCount != null
+          ? ` (${sheet.rowCount} rows x ${sheet.columnCount} cols)`
+          : "";
+        return `- **${sheet.title}**${dimensions}`;
+      })
       .join("\n");
 
     return createSuccessResponse(
