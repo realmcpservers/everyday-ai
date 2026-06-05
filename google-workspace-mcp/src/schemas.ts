@@ -206,6 +206,65 @@ export const GetPresentationSchema = z.object({
   include_images: z.boolean().optional().default(false),
 });
 
+// ============================================================================
+// Google Sheets Schemas
+// ============================================================================
+
+/**
+ * Schema for list_spreadsheets tool
+ */
+export const ListSpreadsheetsSchema = z.object({
+  max_results: z.number().int().min(1).max(100).optional().default(10),
+});
+
+/**
+ * Schema for search_spreadsheets tool
+ */
+export const SearchSpreadsheetsSchema = z.object({
+  query: z.string().min(1, "Search query is required"),
+  max_results: z.number().int().min(1).max(100).optional().default(10),
+});
+
+/**
+ * Schema for get_spreadsheet tool
+ */
+export const GetSpreadsheetSchema = z.object({
+  spreadsheet_id: z.string().min(1, "Spreadsheet ID is required"),
+});
+
+/**
+ * Schema for get_sheet_data tool
+ */
+export const GetSheetDataSchema = z.object({
+  spreadsheet_id: z.string().min(1, "Spreadsheet ID is required"),
+  range: z.string().min(1, "Range is required (e.g., 'Sheet1!A1:D10' or 'A1:D10')"),
+});
+
+/**
+ * Schema for update_cells tool
+ */
+export const UpdateCellsSchema = z.object({
+  spreadsheet_id: z.string().min(1, "Spreadsheet ID is required"),
+  range: z.string().min(1, "Range is required"),
+  values: z.array(z.array(z.string())).min(1, "Values are required"),
+});
+
+/**
+ * Schema for append_rows tool
+ */
+export const AppendRowsSchema = z.object({
+  spreadsheet_id: z.string().min(1, "Spreadsheet ID is required"),
+  range: z.string().min(1, "Range/sheet name is required"),
+  values: z.array(z.array(z.string())).min(1, "Values are required"),
+});
+
+/**
+ * Schema for create_spreadsheet tool
+ */
+export const CreateSpreadsheetSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+});
+
 /**
  * Validate and parse input with a schema
  * Returns the validated data or throws a formatted error
@@ -215,13 +274,13 @@ export function validateInput<T extends z.ZodType>(
   input: unknown
 ): z.infer<T> {
   const result = schema.safeParse(input);
-  
+
   if (!result.success) {
     const errors = result.error.errors
       .map((e) => `${e.path.join(".")}: ${e.message}`)
       .join(", ");
     throw new Error(`Invalid input: ${errors}`);
   }
-  
+
   return result.data;
 }

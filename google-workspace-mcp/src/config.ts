@@ -61,6 +61,8 @@ export const config = {
     "https://www.googleapis.com/auth/documents.readonly",
     // Google Slides
     "https://www.googleapis.com/auth/presentations.readonly",
+    // Google Sheets
+    "https://www.googleapis.com/auth/spreadsheets",
   ] as string[],
   
   /** Gmail defaults */

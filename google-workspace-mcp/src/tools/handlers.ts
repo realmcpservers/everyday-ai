@@ -8,6 +8,7 @@ import { GoogleMeetService } from "../meet-api.js";
 import { GmailService, getHeader, getMessageBody } from "../gmail-api.js";
 import { GoogleDocsService, getDocumentUrl } from "../docs-api.js";
 import { GoogleSlidesService, getPresentationUrl } from "../slides-api.js";
+import { GoogleSheetsService, getSpreadsheetUrl } from "../sheets-api.js";
 import { logger } from "../logger.js";
 import {
   formatDate,
@@ -42,6 +43,13 @@ import {
   ListPresentationsSchema,
   SearchPresentationsSchema,
   GetPresentationSchema,
+  ListSpreadsheetsSchema,
+  SearchSpreadsheetsSchema,
+  GetSpreadsheetSchema,
+  GetSheetDataSchema,
+  UpdateCellsSchema,
+  AppendRowsSchema,
+  CreateSpreadsheetSchema,
 } from "../schemas.js";
 import type { ToolResponse, GoogleAuth } from "../types.js";
 
@@ -50,6 +58,7 @@ let meetService: GoogleMeetService | null = null;
 let gmailService: GmailService | null = null;
 let docsService: GoogleDocsService | null = null;
 let slidesService: GoogleSlidesService | null = null;
+let sheetsService: GoogleSheetsService | null = null;
 let authInstance: GoogleAuth | null = null;
 
 /**
@@ -107,6 +116,16 @@ async function getSlidesService(): Promise<GoogleSlidesService> {
   const auth = await ensureAuth();
   slidesService = new GoogleSlidesService(auth);
   return slidesService;
+}
+
+/**
+ * Get Sheets service (lazy initialization)
+ */
+async function getSheetsService(): Promise<GoogleSheetsService> {
+  if (sheetsService) return sheetsService;
+  const auth = await ensureAuth();
+  sheetsService = new GoogleSheetsService(auth);
+  return sheetsService;
 }
 
 /**
@@ -177,6 +196,23 @@ async function withSlidesAuth<T>(
   }
 }
 
+/**
+ * Wrapper for Sheets handlers
+ */
+async function withSheetsAuth<T>(
+  handler: (service: GoogleSheetsService) => Promise<T>
+): Promise<T | ToolResponse> {
+  try {
+    const service = await getSheetsService();
+    return await handler(service);
+  } catch (error) {
+    if (error instanceof Error && error.message === "NOT_AUTHENTICATED") {
+      return NOT_AUTHENTICATED_RESPONSE;
+    }
+    throw error;
+  }
+}
+
 // ============================================================================
 // Auth Tool Handlers
 // ============================================================================
@@ -192,8 +228,9 @@ export async function handleAuthenticate(): Promise<ToolResponse> {
     gmailService = new GmailService(authInstance);
     docsService = new GoogleDocsService(authInstance);
     slidesService = new GoogleSlidesService(authInstance);
+    sheetsService = new GoogleSheetsService(authInstance);
     return createSuccessResponse(
-      "✅ Successfully authenticated with Google!\n\nYou can now use Google Meet, Calendar, Gmail, Docs, and Slides tools."
+      "✅ Successfully authenticated with Google!\n\nYou can now use Google Meet, Calendar, Gmail, Docs, Slides, and Sheets tools."
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -989,6 +1026,162 @@ export async function handleGetPresentation(args: unknown): Promise<ToolResponse
 }
 
 // ============================================================================
+// Google Sheets Tool Handlers
+// ============================================================================
+
+export async function handleListSpreadsheets(args: unknown): Promise<ToolResponse> {
+  return withSheetsAuth(async (service) => {
+    const { max_results } = validateInput(ListSpreadsheetsSchema, args);
+    const spreadsheets = await service.listSpreadsheets(max_results);
+
+    if (spreadsheets.length === 0) {
+      return createSuccessResponse("No Google Sheets spreadsheets found in your Drive.");
+    }
+
+    const formatted = spreadsheets
+      .map((sheet, i) => {
+        const modified = new Date(sheet.modifiedTime).toLocaleString();
+        return `**${i + 1}. ${sheet.name}**
+- ID: \`${sheet.id}\`
+- Modified: ${modified}
+- URL: ${getSpreadsheetUrl(sheet.id)}`;
+      })
+      .join("\n\n");
+
+    return createSuccessResponse(`**Recent Spreadsheets (${spreadsheets.length}):**\n\n${formatted}`);
+  }) as Promise<ToolResponse>;
+}
+
+export async function handleSearchSpreadsheets(args: unknown): Promise<ToolResponse> {
+  return withSheetsAuth(async (service) => {
+    const { query, max_results } = validateInput(SearchSpreadsheetsSchema, args);
+    const spreadsheets = await service.searchSpreadsheets(query, max_results);
+
+    if (spreadsheets.length === 0) {
+      return createSuccessResponse(`No spreadsheets found matching: "${query}"`);
+    }
+
+    const formatted = spreadsheets
+      .map((sheet, i) => {
+        const modified = new Date(sheet.modifiedTime).toLocaleString();
+        return `**${i + 1}. ${sheet.name}**
+- ID: \`${sheet.id}\`
+- Modified: ${modified}
+- URL: ${getSpreadsheetUrl(sheet.id)}`;
+      })
+      .join("\n\n");
+
+    return createSuccessResponse(
+      `**Search Results for "${query}" (${spreadsheets.length} spreadsheets):**\n\n${formatted}`
+    );
+  }) as Promise<ToolResponse>;
+}
+
+export async function handleGetSpreadsheet(args: unknown): Promise<ToolResponse> {
+  return withSheetsAuth(async (service) => {
+    const { spreadsheet_id } = validateInput(GetSpreadsheetSchema, args);
+    const spreadsheet = await service.getSpreadsheet(spreadsheet_id);
+
+    const sheetsFormatted = spreadsheet.sheets
+      .map((sheet) => {
+        const dimensions = sheet.rowCount != null && sheet.columnCount != null
+          ? ` (${sheet.rowCount} rows x ${sheet.columnCount} cols)`
+          : "";
+        return `- **${sheet.title}**${dimensions}`;
+      })
+      .join("\n");
+
+    return createSuccessResponse(
+      `**Spreadsheet: ${spreadsheet.title}**\n\n` +
+        `- ID: \`${spreadsheet.spreadsheetId}\`\n` +
+        `- Sheets: ${spreadsheet.sheets.length}\n` +
+        `- URL: ${spreadsheet.spreadsheetUrl}\n\n` +
+        `**Sheets:**\n${sheetsFormatted}`
+    );
+  }) as Promise<ToolResponse>;
+}
+
+export async function handleGetSheetData(args: unknown): Promise<ToolResponse> {
+  return withSheetsAuth(async (service) => {
+    const { spreadsheet_id, range } = validateInput(GetSheetDataSchema, args);
+    const data = await service.getSheetData(spreadsheet_id, range);
+
+    if (data.values.length === 0) {
+      return createSuccessResponse(`No data found in range: ${range}`);
+    }
+
+    // Format as markdown table
+    let table = "";
+    if (data.values.length > 0) {
+      const maxCols = Math.max(...data.values.map((row) => row.length));
+
+      // Header row
+      const headerRow = data.values[0] || [];
+      table += "| " + headerRow.map((cell) => cell || "").join(" | ") + " |\n";
+      table += "| " + Array(maxCols).fill("---").join(" | ") + " |\n";
+
+      // Data rows
+      for (let i = 1; i < data.values.length; i++) {
+        const row = data.values[i] || [];
+        // Pad row to match header columns
+        const paddedRow = Array(maxCols).fill("").map((_, j) => row[j] || "");
+        table += "| " + paddedRow.join(" | ") + " |\n";
+      }
+    }
+
+    return createSuccessResponse(
+      `**Sheet Data** (Range: ${data.range})\n\n` +
+        `Rows: ${data.values.length}, Columns: ${data.values[0]?.length || 0}\n\n` +
+        table
+    );
+  }) as Promise<ToolResponse>;
+}
+
+export async function handleUpdateCells(args: unknown): Promise<ToolResponse> {
+  return withSheetsAuth(async (service) => {
+    const { spreadsheet_id, range, values } = validateInput(UpdateCellsSchema, args);
+    const result = await service.updateCells(spreadsheet_id, range, values);
+
+    return createSuccessResponse(
+      `✅ Cells updated successfully!\n\n` +
+        `- Updated cells: ${result.updatedCells}\n` +
+        `- Range: ${result.updatedRange}\n` +
+        `- URL: ${getSpreadsheetUrl(spreadsheet_id)}`
+    );
+  }) as Promise<ToolResponse>;
+}
+
+export async function handleAppendRows(args: unknown): Promise<ToolResponse> {
+  return withSheetsAuth(async (service) => {
+    const { spreadsheet_id, range, values } = validateInput(AppendRowsSchema, args);
+    const result = await service.appendRows(spreadsheet_id, range, values);
+
+    return createSuccessResponse(
+      `✅ Rows appended successfully!\n\n` +
+        `- Rows added: ${values.length}\n` +
+        `- Updated cells: ${result.updatedCells}\n` +
+        `- Range: ${result.updatedRange}\n` +
+        `- URL: ${getSpreadsheetUrl(spreadsheet_id)}`
+    );
+  }) as Promise<ToolResponse>;
+}
+
+export async function handleCreateSpreadsheet(args: unknown): Promise<ToolResponse> {
+  return withSheetsAuth(async (service) => {
+    const { title } = validateInput(CreateSpreadsheetSchema, args);
+    const spreadsheet = await service.createSpreadsheet(title);
+
+    return createSuccessResponse(
+      `✅ **Spreadsheet Created!**\n\n` +
+        `- Title: ${spreadsheet.title}\n` +
+        `- ID: \`${spreadsheet.spreadsheetId}\`\n` +
+        `- Sheets: ${spreadsheet.sheets.map((s) => s.title).join(", ")}\n` +
+        `- URL: ${spreadsheet.spreadsheetUrl}`
+    );
+  }) as Promise<ToolResponse>;
+}
+
+// ============================================================================
 // Tool Router
 // ============================================================================
 
@@ -1077,6 +1270,22 @@ export async function handleToolCall(
       return handleSearchPresentations(args);
     case "get_presentation":
       return handleGetPresentation(args);
+
+    // Google Sheets
+    case "list_spreadsheets":
+      return handleListSpreadsheets(args);
+    case "search_spreadsheets":
+      return handleSearchSpreadsheets(args);
+    case "get_spreadsheet":
+      return handleGetSpreadsheet(args);
+    case "get_sheet_data":
+      return handleGetSheetData(args);
+    case "update_cells":
+      return handleUpdateCells(args);
+    case "append_rows":
+      return handleAppendRows(args);
+    case "create_spreadsheet":
+      return handleCreateSpreadsheet(args);
 
     default:
       return createErrorResponse(`Unknown tool: ${name}`);
