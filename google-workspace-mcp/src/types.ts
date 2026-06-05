@@ -446,23 +446,10 @@ export interface ToolResponse {
 // ============================================================================
 // Google Sheets Types
 // ============================================================================
-
-export interface SpreadsheetInfo {
-  spreadsheetId: string;
-  title: string;
-  sheets: SheetInfo[];
-  spreadsheetUrl: string;
-}
-
 export interface SheetInfo {
   sheetId: number;
   title: string;
   index: number;
-  rowCount: number;
-  columnCount: number;
-}
-
-export interface CellData {
-  range: string;
-  values: string[][];
+  rowCount?: number;
+  columnCount?: number;
 }
