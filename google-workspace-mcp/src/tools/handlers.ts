@@ -716,14 +716,71 @@ export async function handleSearchDocs(args: unknown): Promise<ToolResponse> {
 export async function handleGetDoc(args: unknown): Promise<ToolResponse> {
   return withDocsAuth(async (service) => {
     const { document_id } = validateInput(GetDocSchema, args);
-    const doc = await service.getDocument(document_id);
-    const text = await service.getDocumentText(document_id);
+
+    // Fetch document content and comments in parallel
+    const [docWithTabs, comments] = await Promise.all([
+      service.getDocumentWithTabs(document_id),
+      service.getDocumentComments(document_id).catch(() => []), // Don't fail if comments can't be fetched
+    ]);
+
+    let content: string;
+    let tabInfo = "";
+
+    if (docWithTabs.tabs.length === 1) {
+      // Single tab - simple format
+      content = docWithTabs.tabs[0].content || "(Empty document)";
+    } else {
+      // Multiple tabs - show tab structure
+      tabInfo = `- Tabs: ${docWithTabs.tabs.length} (${docWithTabs.tabs.map(t => t.title).join(", ")})\n`;
+      content = docWithTabs.tabs
+        .map((tab) => `## ${tab.title}\n\n${tab.content || "(Empty tab)"}`)
+        .join("\n\n---\n\n");
+    }
+
+    // Format comments section
+    let commentsSection = "";
+    if (comments.length > 0) {
+      const openComments = comments.filter(c => !c.resolved);
+      const resolvedComments = comments.filter(c => c.resolved);
+
+      commentsSection = `\n\n---\n\n## Comments (${comments.length})`;
+
+      if (openComments.length > 0) {
+        commentsSection += `\n\n### Open (${openComments.length})\n`;
+        commentsSection += openComments.map((c) => {
+          let commentText = `**${c.author}** (${new Date(c.createdTime).toLocaleString()}):\n`;
+          if (c.quotedText) {
+            commentText += `> "${c.quotedText}"\n\n`;
+          }
+          commentText += c.content;
+          if (c.replies.length > 0) {
+            commentText += "\n" + c.replies.map(r =>
+              `  - **${r.author}**: ${r.content}`
+            ).join("\n");
+          }
+          return commentText;
+        }).join("\n\n");
+      }
+
+      if (resolvedComments.length > 0) {
+        commentsSection += `\n\n### Resolved (${resolvedComments.length})\n`;
+        commentsSection += resolvedComments.map((c) => {
+          let commentText = `~~**${c.author}**~~: ${c.content}`;
+          if (c.quotedText) {
+            commentText = `> "${c.quotedText}"\n\n` + commentText;
+          }
+          return commentText;
+        }).join("\n\n");
+      }
+    }
 
     return createSuccessResponse(
-      `**Document: ${doc.title}**\n\n` +
-        `- ID: \`${doc.documentId}\`\n` +
-        `- URL: ${getDocumentUrl(doc.documentId)}\n\n` +
-        `---\n\n**Content:**\n\n${text || "(Empty document)"}`
+      `**Document: ${docWithTabs.title}**\n\n` +
+        `- ID: \`${document_id}\`\n` +
+        tabInfo +
+        (comments.length > 0 ? `- Comments: ${comments.length} (${comments.filter(c => !c.resolved).length} open)\n` : "") +
+        `- URL: ${getDocumentUrl(document_id)}\n\n` +
+        `---\n\n${content}${commentsSection}`
     );
   }) as Promise<ToolResponse>;
 }

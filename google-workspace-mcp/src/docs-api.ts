@@ -7,7 +7,7 @@ import { google } from "googleapis";
 import type { docs_v1 } from "googleapis";
 
 import { logger } from "./logger.js";
-import type { GoogleAuth, GoogleDoc, CreateDocParams, DocContent, TableRow } from "./types.js";
+import type { GoogleAuth, GoogleDoc, CreateDocParams, DocContent, TableRow, DocTab, DocComment } from "./types.js";
 
 export class GoogleDocsService {
   private docs: docs_v1.Docs;
@@ -25,14 +25,18 @@ export class GoogleDocsService {
   }
 
   /**
-   * Get a document by ID
+   * Get a document by ID (includes all tabs)
    */
   async getDocument(documentId: string): Promise<GoogleDoc> {
     try {
       logger.debug(`Getting document: ${documentId}`);
-      const response = await this.docs.documents.get({
+      // includeTabsContent is a newer API parameter not yet in googleapis types
+      // Using type assertion to work around this limitation
+      const params = {
         documentId,
-      });
+        includeTabsContent: true,
+      };
+      const response = await (this.docs.documents.get as (params: unknown) => Promise<{ data: GoogleDoc }>)(params);
 
       return response.data as GoogleDoc;
     } catch (error) {
@@ -233,15 +237,70 @@ export class GoogleDocsService {
   }
 
   /**
-   * Get document content as plain text
+   * Get document content as plain text (from all tabs)
    */
   async getDocumentText(documentId: string): Promise<string> {
     try {
       const doc = await this.getDocument(documentId);
-      return this.extractTextFromDoc(doc);
+      return this.extractTextFromAllTabs(doc);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to get document text: ${message}`);
+    }
+  }
+
+  /**
+   * Get document content with tab structure
+   */
+  async getDocumentWithTabs(documentId: string): Promise<{
+    title: string;
+    tabs: Array<{ tabId: string; title: string; content: string }>;
+  }> {
+    try {
+      const doc = await this.getDocument(documentId);
+      const tabs = this.extractTabsContent(doc);
+      return {
+        title: doc.title,
+        tabs,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to get document tabs: ${message}`);
+    }
+  }
+
+  /**
+   * Get comments on a document
+   */
+  async getDocumentComments(documentId: string): Promise<DocComment[]> {
+    try {
+      logger.debug(`Getting comments for document: ${documentId}`);
+
+      const response = await this.drive.comments.list({
+        fileId: documentId,
+        fields: "comments(id,author,content,createdTime,resolved,quotedFileContent,replies)",
+        includeDeleted: false,
+      });
+
+      const comments = response.data.comments || [];
+
+      return comments.map((comment) => ({
+        id: comment.id || "",
+        author: comment.author?.displayName || "Unknown",
+        content: comment.content || "",
+        createdTime: comment.createdTime || "",
+        resolved: comment.resolved || false,
+        quotedText: comment.quotedFileContent?.value || undefined,
+        replies: (comment.replies || []).map((reply) => ({
+          id: reply.id || "",
+          author: reply.author?.displayName || "Unknown",
+          content: reply.content || "",
+          createdTime: reply.createdTime || "",
+        })),
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to get document comments: ${message}`);
     }
   }
 
@@ -292,6 +351,7 @@ export class GoogleDocsService {
 
   /**
    * Helper: Extract plain text from document (includes tables as markdown)
+   * Falls back to body content if no tabs are present
    */
   private extractTextFromDoc(doc: GoogleDoc): string {
     if (!doc.body?.content) return "";
@@ -311,6 +371,69 @@ export class GoogleDocsService {
     }
 
     return text;
+  }
+
+  /**
+   * Helper: Extract text from all tabs in a document
+   */
+  private extractTextFromAllTabs(doc: GoogleDoc): string {
+    // If tabs are present, extract from all tabs
+    if (doc.tabs && doc.tabs.length > 0) {
+      const tabsContent = this.extractTabsContent(doc);
+
+      // If only one tab, just return its content
+      if (tabsContent.length === 1) {
+        return tabsContent[0].content;
+      }
+
+      // Multiple tabs - format with headers
+      return tabsContent
+        .map((tab) => `## ${tab.title}\n\n${tab.content}`)
+        .join("\n\n---\n\n");
+    }
+
+    // Fallback to body content for documents without tabs
+    return this.extractTextFromDoc(doc);
+  }
+
+  /**
+   * Helper: Extract content from all tabs (including nested child tabs)
+   */
+  private extractTabsContent(doc: GoogleDoc): Array<{ tabId: string; title: string; content: string }> {
+    const results: Array<{ tabId: string; title: string; content: string }> = [];
+
+    if (!doc.tabs || doc.tabs.length === 0) {
+      // No tabs, use body content
+      return [{
+        tabId: "default",
+        title: "Document",
+        content: this.extractTextFromDoc(doc),
+      }];
+    }
+
+    // Recursively extract from all tabs
+    const extractFromTab = (tab: DocTab): void => {
+      const tabId = tab.tabProperties?.tabId || "";
+      const title = tab.tabProperties?.title || "Untitled Tab";
+
+      if (tab.documentTab?.body?.content) {
+        const content = this.extractTextFromContent(tab.documentTab.body.content);
+        results.push({ tabId, title, content });
+      }
+
+      // Process child tabs recursively
+      if (tab.childTabs && tab.childTabs.length > 0) {
+        for (const childTab of tab.childTabs) {
+          extractFromTab(childTab);
+        }
+      }
+    };
+
+    for (const tab of doc.tabs) {
+      extractFromTab(tab);
+    }
+
+    return results;
   }
 
   /**

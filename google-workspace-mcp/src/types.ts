@@ -243,12 +243,35 @@ export interface LimitInput {
 // Google Docs Types
 // ============================================================================
 
+export interface DocumentTab {
+  tabId: string;
+  title: string;
+  body?: {
+    content?: DocContent[];
+  };
+}
+
+export interface DocTab {
+  tabProperties?: {
+    tabId?: string;
+    title?: string;
+    index?: number;
+  };
+  documentTab?: {
+    body?: {
+      content?: DocContent[];
+    };
+  };
+  childTabs?: DocTab[];
+}
+
 export interface GoogleDoc {
   documentId: string;
   title: string;
   body?: {
     content?: DocContent[];
   };
+  tabs?: DocTab[];
   revisionId?: string;
 }
 
@@ -305,6 +328,21 @@ export interface AppendToDocParams {
 
 export interface GetDocParams {
   document_id: string;
+}
+
+export interface DocComment {
+  id: string;
+  author: string;
+  content: string;
+  createdTime: string;
+  resolved: boolean;
+  quotedText?: string;
+  replies: Array<{
+    id: string;
+    author: string;
+    content: string;
+    createdTime: string;
+  }>;
 }
 
 // ============================================================================
