@@ -123,10 +123,11 @@ export class GoogleSheetsService {
         spreadsheetId,
         range,
         valueRenderOption: "FORMATTED_VALUE",
-      });
-
       const values = (response.data.values || []).map((row) =>
-        row.map((cell) => (cell === null || cell === undefined ? "" : String(cell)))
+        row.map((cell) => {
+          if (cell === null || cell === undefined) return null;
+          return String(cell);
+        })
       );
 
       return {
