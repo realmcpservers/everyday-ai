@@ -583,4 +583,144 @@ export const tools: Tool[] = [
       required: ["presentation_id"],
     },
   },
+
+  // =========================================================================
+  // Google Sheets Tools
+  // =========================================================================
+  {
+    name: "list_spreadsheets",
+    description:
+      "List recent Google Sheets spreadsheets from your Drive, sorted by last modified.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        max_results: {
+          type: "number",
+          description: "Maximum number of spreadsheets to return (default: 10, max: 100)",
+        },
+      },
+    },
+  },
+  {
+    name: "search_spreadsheets",
+    description:
+      "Search for Google Sheets spreadsheets by name.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query to find spreadsheets by name",
+        },
+        max_results: {
+          type: "number",
+          description: "Maximum number of spreadsheets to return (default: 10, max: 100)",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_spreadsheet",
+    description:
+      "Get metadata about a Google Sheets spreadsheet including its title and list of sheets (tabs).",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        spreadsheet_id: {
+          type: "string",
+          description: "The Google Sheets spreadsheet ID",
+        },
+      },
+      required: ["spreadsheet_id"],
+    },
+  },
+  {
+    name: "get_sheet_data",
+    description:
+      "Read cell values from a Google Sheets spreadsheet. Supports A1 notation for ranges.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        spreadsheet_id: {
+          type: "string",
+          description: "The Google Sheets spreadsheet ID",
+        },
+        range: {
+          type: "string",
+          description: "The range to read in A1 notation (e.g., 'Sheet1!A1:D10', 'A1:D10', or 'Sheet1')",
+        },
+      },
+      required: ["spreadsheet_id", "range"],
+    },
+  },
+  {
+    name: "update_cells",
+    description:
+      "Update cell values in a Google Sheets spreadsheet. Values are entered as the user would type them.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        spreadsheet_id: {
+          type: "string",
+          description: "The Google Sheets spreadsheet ID",
+        },
+        range: {
+          type: "string",
+          description: "The range to update in A1 notation (e.g., 'Sheet1!A1:B2')",
+        },
+        values: {
+          type: "array",
+          items: {
+            type: "array",
+            items: { type: "string" },
+          },
+          description: "2D array of values to write (rows of cells)",
+        },
+      },
+      required: ["spreadsheet_id", "range", "values"],
+    },
+  },
+  {
+    name: "append_rows",
+    description:
+      "Append rows of data to the end of a Google Sheets spreadsheet or sheet.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        spreadsheet_id: {
+          type: "string",
+          description: "The Google Sheets spreadsheet ID",
+        },
+        range: {
+          type: "string",
+          description: "The sheet or range to append to (e.g., 'Sheet1' or 'Sheet1!A:D')",
+        },
+        values: {
+          type: "array",
+          items: {
+            type: "array",
+            items: { type: "string" },
+          },
+          description: "2D array of rows to append",
+        },
+      },
+      required: ["spreadsheet_id", "range", "values"],
+    },
+  },
+  {
+    name: "create_spreadsheet",
+    description:
+      "Create a new Google Sheets spreadsheet with the specified title.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        title: {
+          type: "string",
+          description: "Title of the new spreadsheet",
+        },
+      },
+      required: ["title"],
+    },
+  },
 ];
