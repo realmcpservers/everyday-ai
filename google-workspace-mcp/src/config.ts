@@ -60,7 +60,7 @@ export const config = {
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/documents.readonly",
     // Google Slides
-    "https://www.googleapis.com/auth/presentations.readonly",
+    "https://www.googleapis.com/auth/presentations",
     // Google Sheets
     "https://www.googleapis.com/auth/spreadsheets",
   ] as string[],

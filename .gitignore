@@ -7,6 +7,7 @@ dist/
 # Credentials & Tokens (sensitive)
 credentials.json
 token.json
+token-*.json
 
 # IDE
 .vscode/

@@ -70,6 +70,7 @@ npm install
    - [Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com)
    - [Gmail API](https://console.cloud.google.com/apis/library/gmail.googleapis.com)
    - [Google Docs API](https://console.cloud.google.com/apis/library/docs.googleapis.com)
+   - [Google Slides API](https://console.cloud.google.com/apis/library/slides.googleapis.com)
 4. Go to **APIs & Services** → **Credentials**
 5. Click **Create Credentials** → **OAuth client ID**
 6. Select **Desktop app**
@@ -118,6 +119,25 @@ A browser window will open for Google sign-in. After authorizing, a `token.json`
 
 > ⚠️ **Note**: `token.json` contains your personal authorization. Never share or commit it!
 
+### Google Slides creation and editing
+
+The Slides tools can create presentations, inspect elements and revisions, add, duplicate, delete or reorder slides, add shapes and text, change text styling or slide backgrounds, move elements, and render slide previews. `edit_presentation` applies a batch atomically. Inspect first and pass its `revisionId` as `revision_id` to prevent overwriting concurrent edits. Slide positions use zero-based indices; the move index refers to the order before the move. Coordinates for edits are in points. Newly created IDs are returned in `createdIds`; duplicated IDs are returned in the API replies. Add content to newly created slides in a subsequent call.
+
+For card borders, set `outline_color` (a `#RRGGBB` color) on `add_shape` or `style_shape`. For example, `{"type":"style_shape","element_id":"card-id","outline_color":"#D9D9D9"}` changes the outline without replacing the fill. Both `fill_color` and `outline_color` may be supplied together.
+
+Existing OAuth users must call `authenticate` with `{"force": true}` and complete consent for the new Slides write scope; the existing token is kept until the new consent succeeds. Restart the server after changing environment configuration. Service accounts can use the Slides editing tools for presentations shared with them, but Google does not support service accounts for Apps Script API execution.
+
+#### Private local images (one-time setup)
+
+`add_slide_image` reads a local PNG, JPEG, or GIF (maximum 3 MiB) on the MCP server host and sends its bytes to a private Apps Script API executable. It does not create a Drive image or change sharing permissions. The resulting image is visible to anyone who can view the presentation. To configure it:
+
+1. Enable the [Apps Script API](https://console.cloud.google.com/apis/library/script.googleapis.com) in the **same standard Google Cloud project** used by the MCP server's OAuth client. Enable the Slides API too.
+2. Create a standalone project at [script.google.com](https://script.google.com/). Copy `apps-script/PrivateSlideImages.gs` into its editor. In Project Settings enable showing the manifest, then replace `appsscript.json` with `apps-script/appsscript.json` from this repository. Use the same standard Cloud project as your OAuth client (Project Settings → Google Cloud Platform project).
+3. Deploy as an **API executable**, restricted to yourself. Copy the deployment ID, not the project ID. See Google's [execution setup](https://developers.google.com/apps-script/api/how-tos/execute). Workspace policy may require administrator approval.
+4. Set `GOOGLE_SLIDES_IMAGE_SCRIPT_DEPLOYMENT_ID` in the MCP server environment to that deployment ID, and restart the server. Reauthorize with `authenticate` and `{"force":true}` if you haven't granted Slides write access yet.
+
+The script and OAuth client must share the Cloud project; API execution uses the OAuth user's permissions and is unavailable for service accounts. A failed or missing helper returns an error; there is no public-image fallback. Preview images from Google are temporary access-bearing URLs and are returned as image data, not exposed as links.
+
 ---
 
 ## 🔧 Usage
@@ -127,9 +147,13 @@ A browser window will open for Google sign-in. After authorizing, a `token.json`
 The **everyday-ai** repo has a full Cursor config at the repo root: **mcp-servers-config.json** (Google + Slack + Jira + GitHub). Use that file in **Settings** → **Features** → **MCP Servers**. The `google-service` entry should point at **this folder’s** built server:
 
 ```json
-"google-service": {
-  "command": "node",
-  "args": ["/path/to/everyday-ai/google-workspace-mcp/dist/index.js"]
+{
+  "google-service": {
+    "command": "node",
+    "args": [
+      "/path/to/everyday-ai/google-workspace-mcp/dist/index.js"
+    ]
+  }
 }
 ```
 

@@ -5,6 +5,8 @@
 
 import { z } from "zod";
 
+export const AuthenticateSchema = z.object({ force: z.boolean().optional().default(false) });
+
 /**
  * Schema for list_conferences tool
  */
@@ -204,6 +206,56 @@ export const SearchPresentationsSchema = z.object({
 export const GetPresentationSchema = z.object({
   presentation_id: z.string().min(1, "Presentation ID is required"),
   include_images: z.boolean().optional().default(false),
+});
+
+const slideId = z.string().min(1);
+const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color such as #336699");
+const textStyle = z.object({
+  font_family: z.string().min(1).optional(),
+  font_size: z.number().positive().finite().optional(),
+  color: color.optional(),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  align: z.enum(["START", "CENTER", "END", "JUSTIFIED"]).optional(),
+}).strict().refine((style) => Object.keys(style).length > 0, "Provide at least one style property");
+const box = {
+  x: z.number().finite(), y: z.number().finite(),
+  width: z.number().positive().finite(), height: z.number().positive().finite(),
+};
+
+export const CreatePresentationSchema = z.object({ title: z.string().min(1) });
+export const InspectPresentationSchema = z.object({ presentation_id: slideId });
+export const SlidePreviewSchema = z.object({ presentation_id: slideId, slide_id: slideId });
+export const EditPresentationSchema = z.object({
+  presentation_id: slideId,
+  revision_id: z.string().min(1).optional(),
+  operations: z.array(z.discriminatedUnion("type", [
+    z.object({ type: z.literal("add_slide"), index: z.number().int().nonnegative().optional() }).strict(),
+    z.object({ type: z.literal("delete_slide"), slide_id: slideId }).strict(),
+    z.object({ type: z.literal("duplicate_slide"), slide_id: slideId }).strict(),
+    z.object({ type: z.literal("move_slide"), slide_id: slideId, index: z.number().int().nonnegative() }).strict(),
+    z.object({ type: z.literal("add_text_box"), slide_id: slideId, text: z.string().min(1), ...box, style: textStyle.optional() }).strict(),
+    z.object({ type: z.literal("add_shape"), slide_id: slideId, shape: z.enum(["RECTANGLE", "ROUND_RECTANGLE", "ELLIPSE", "TRIANGLE"]), ...box, fill_color: color.optional(), outline_color: color.optional() }).strict(),
+    z.object({ type: z.literal("replace_text"), element_id: slideId, text: z.string() }).strict(),
+    z.object({ type: z.literal("style_text"), element_id: slideId, style: textStyle }).strict(),
+    z.object({ type: z.literal("style_shape"), element_id: slideId, fill_color: color.optional(), outline_color: color.optional() }).strict(),
+    z.object({ type: z.literal("set_background"), slide_id: slideId, color }).strict(),
+    z.object({ type: z.literal("move_element"), element_id: slideId, x: z.number().finite(), y: z.number().finite() }).strict(),
+    z.object({ type: z.literal("transform_element"), element_id: slideId, x: z.number().finite(), y: z.number().finite(), scale_x: z.number().positive().finite(), scale_y: z.number().positive().finite() }).strict(),
+    z.object({ type: z.literal("delete_element"), element_id: slideId }).strict(),
+  ])).min(1).max(100),
+}).superRefine(({ operations }, ctx) => {
+  operations.forEach((op, index) => {
+    if (op.type === "style_shape" && op.fill_color === undefined && op.outline_color === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["operations", index], message: "Provide fill_color or outline_color" });
+    }
+  });
+});
+export type SlideEditOperation = z.infer<typeof EditPresentationSchema>["operations"][number];
+export const AddSlideImageSchema = z.object({
+  presentation_id: slideId, slide_id: slideId,
+  file_path: z.string().min(1), ...box,
 });
 
 // ============================================================================

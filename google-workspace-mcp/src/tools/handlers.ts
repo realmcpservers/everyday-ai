@@ -21,6 +21,7 @@ import {
 } from "../utils.js";
 import {
   validateInput,
+  AuthenticateSchema,
   ListConferencesSchema,
   GetConferenceSchema,
   ConferenceNameSchema,
@@ -43,6 +44,11 @@ import {
   ListPresentationsSchema,
   SearchPresentationsSchema,
   GetPresentationSchema,
+  CreatePresentationSchema,
+  InspectPresentationSchema,
+  SlidePreviewSchema,
+  EditPresentationSchema,
+  AddSlideImageSchema,
   ListSpreadsheetsSchema,
   SearchSpreadsheetsSchema,
   GetSpreadsheetSchema,
@@ -221,9 +227,10 @@ export async function handleAuthStatus(): Promise<ToolResponse> {
   return createSuccessResponse(getAuthStatus());
 }
 
-export async function handleAuthenticate(): Promise<ToolResponse> {
+export async function handleAuthenticate(args: unknown): Promise<ToolResponse> {
   try {
-    authInstance = await authenticate();
+    const { force } = validateInput(AuthenticateSchema, args ?? {});
+    authInstance = await authenticate({ force });
     meetService = new GoogleMeetService(authInstance);
     gmailService = new GmailService(authInstance);
     docsService = new GoogleDocsService(authInstance);
@@ -871,6 +878,42 @@ export async function handleReplaceInDoc(args: unknown): Promise<ToolResponse> {
 // Google Slides Tool Handlers
 // ============================================================================
 
+export async function handleCreatePresentation(args: unknown): Promise<ToolResponse> {
+  return withSlidesAuth(async (service) => {
+    const { title } = validateInput(CreatePresentationSchema, args);
+    return createSuccessResponse(JSON.stringify(await service.createPresentation(title), null, 2));
+  }) as Promise<ToolResponse>;
+}
+
+export async function handleInspectPresentation(args: unknown): Promise<ToolResponse> {
+  return withSlidesAuth(async (service) => {
+    const { presentation_id } = validateInput(InspectPresentationSchema, args);
+    return createSuccessResponse(JSON.stringify(await service.inspectPresentation(presentation_id), null, 2));
+  }) as Promise<ToolResponse>;
+}
+
+export async function handleEditPresentation(args: unknown): Promise<ToolResponse> {
+  return withSlidesAuth(async (service) => {
+    const { presentation_id, operations, revision_id } = validateInput(EditPresentationSchema, args);
+    return createSuccessResponse(JSON.stringify(await service.editPresentation(presentation_id, operations, revision_id), null, 2));
+  }) as Promise<ToolResponse>;
+}
+
+export async function handleSlidePreview(args: unknown): Promise<ToolResponse> {
+  return withSlidesAuth(async (service) => {
+    const { presentation_id, slide_id } = validateInput(SlidePreviewSchema, args);
+    const image = await service.getSlidePreview(presentation_id, slide_id);
+    return { content: [{ type: "image" as const, data: image.data, mimeType: image.mimeType }] };
+  }) as Promise<ToolResponse>;
+}
+
+export async function handleAddSlideImage(args: unknown): Promise<ToolResponse> {
+  return withSlidesAuth(async (service) => {
+    const input = validateInput(AddSlideImageSchema, args);
+    return createSuccessResponse(JSON.stringify(await service.addSlideImage(input), null, 2));
+  }) as Promise<ToolResponse>;
+}
+
 export async function handleListPresentations(args: unknown): Promise<ToolResponse> {
   return withSlidesAuth(async (service) => {
     const { limit } = validateInput(ListPresentationsSchema, args);
@@ -1199,7 +1242,7 @@ export async function handleToolCall(
     case "auth_status":
       return handleAuthStatus();
     case "authenticate":
-      return handleAuthenticate();
+      return handleAuthenticate(args);
 
     // Meet
     case "list_conferences":
@@ -1270,6 +1313,16 @@ export async function handleToolCall(
       return handleSearchPresentations(args);
     case "get_presentation":
       return handleGetPresentation(args);
+    case "create_presentation":
+      return handleCreatePresentation(args);
+    case "inspect_presentation":
+      return handleInspectPresentation(args);
+    case "edit_presentation":
+      return handleEditPresentation(args);
+    case "get_slide_preview":
+      return handleSlidePreview(args);
+    case "add_slide_image":
+      return handleAddSlideImage(args);
 
     // Google Sheets
     case "list_spreadsheets":

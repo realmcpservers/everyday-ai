@@ -70,20 +70,33 @@ function loadSavedToken(): SavedToken | null {
  * Save OAuth credentials to disk
  */
 function saveCredentials(client: OAuth2Client, credentials: OAuthCredentials): void {
+  const tempPath = `${config.tokenPath}.${crypto.randomBytes(8).toString("hex")}.tmp`;
+  let createdTemp = false;
   try {
     const key = "installed" in credentials ? credentials.installed : credentials.web;
-    if (!key) return;
+    if (!key || !client.credentials.refresh_token) {
+      throw new Error("Google did not return a refresh token; existing credentials were not changed. Retry OAuth consent.");
+    }
 
     const payload: SavedToken = {
       type: "authorized_user",
       client_id: key.client_id,
       client_secret: key.client_secret,
-      refresh_token: client.credentials.refresh_token || "",
+      refresh_token: client.credentials.refresh_token,
     };
-    fs.writeFileSync(config.tokenPath, JSON.stringify(payload, null, 2));
+    const fd = fs.openSync(tempPath, "wx", 0o600);
+    createdTemp = true;
+    try {
+      fs.writeFileSync(fd, JSON.stringify(payload, null, 2));
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tempPath, config.tokenPath);
+    createdTemp = false;
     logger.info("OAuth credentials saved successfully");
   } catch (err) {
-    logger.error("Error saving credentials", err);
+    if (createdTemp && fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    throw err;
   }
 }
 
@@ -151,6 +164,7 @@ function startLocalServer(
     } catch (err) {
       res.writeHead(500, { "Content-Type": "text/plain" });
       res.end("Authentication failed");
+      server.close();
       reject(err instanceof Error ? err : new Error(String(err)));
     }
   });
@@ -161,10 +175,10 @@ function startLocalServer(
 /**
  * Authenticate using OAuth2
  */
-async function authenticateOAuth(credentials: OAuthCredentials): Promise<GoogleAuth> {
+async function authenticateOAuth(credentials: OAuthCredentials, force = false): Promise<GoogleAuth> {
   // Check for existing token
   const savedToken = loadSavedToken();
-  if (savedToken) {
+  if (savedToken && !force) {
     logger.debug("Using saved OAuth token");
     const auth = google.auth.fromJSON(savedToken);
     return auth as GoogleAuth;
@@ -220,7 +234,7 @@ async function authenticateOAuth(credentials: OAuthCredentials): Promise<GoogleA
  * Main authentication function
  * Automatically detects credential type and authenticates accordingly
  */
-export async function authenticate(): Promise<GoogleAuth> {
+export async function authenticate(options: { force?: boolean } = {}): Promise<GoogleAuth> {
   // Check for credentials file
   if (!fs.existsSync(config.credentialsPath)) {
     throw new Error(
@@ -244,7 +258,7 @@ export async function authenticate(): Promise<GoogleAuth> {
     return authenticateServiceAccount(credentials as ServiceAccountCredentials);
   } else {
     logger.info("Using OAuth2 authentication");
-    return authenticateOAuth(credentials as OAuthCredentials);
+    return authenticateOAuth(credentials as OAuthCredentials, options.force);
   }
 }
 

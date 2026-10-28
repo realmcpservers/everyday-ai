@@ -5,6 +5,33 @@
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
+const id = { type: "string", minLength: 1 };
+const number = { type: "number" };
+const box = { x: number, y: number, width: { type: "number", exclusiveMinimum: 0 }, height: { type: "number", exclusiveMinimum: 0 } };
+const style = { type: "object", additionalProperties: false, minProperties: 1, properties: {
+  font_family: id, font_size: { type: "number", exclusiveMinimum: 0 }, color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+  bold: { type: "boolean" }, italic: { type: "boolean" }, underline: { type: "boolean" },
+  align: { type: "string", enum: ["START", "CENTER", "END", "JUSTIFIED"] },
+} };
+const operation = (type: string, properties: Record<string, unknown>, required: string[]) => ({
+  type: "object", additionalProperties: false, properties: { type: { type: "string", enum: [type] }, ...properties }, required: ["type", ...required],
+});
+const slideOperations = [
+  operation("add_slide", { index: { type: "integer", minimum: 0 } }, []),
+  operation("delete_slide", { slide_id: id }, ["slide_id"]),
+  operation("duplicate_slide", { slide_id: id }, ["slide_id"]),
+  operation("move_slide", { slide_id: id, index: { type: "integer", minimum: 0 } }, ["slide_id", "index"]),
+  operation("add_text_box", { slide_id: id, text: id, ...box, style }, ["slide_id", "text", "x", "y", "width", "height"]),
+  operation("add_shape", { slide_id: id, shape: { type: "string", enum: ["RECTANGLE", "ROUND_RECTANGLE", "ELLIPSE", "TRIANGLE"] }, ...box, fill_color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" }, outline_color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$", description: "Shape outline color as #RRGGBB" } }, ["slide_id", "shape", "x", "y", "width", "height"]),
+  operation("replace_text", { element_id: id, text: { type: "string" } }, ["element_id", "text"]),
+  operation("style_text", { element_id: id, style }, ["element_id", "style"]),
+  { ...operation("style_shape", { element_id: id, fill_color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" }, outline_color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$", description: "Shape outline color as #RRGGBB" } }, ["element_id"]), anyOf: [{ required: ["fill_color"] }, { required: ["outline_color"] }] },
+  operation("set_background", { slide_id: id, color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" } }, ["slide_id", "color"]),
+  operation("move_element", { element_id: id, x: number, y: number }, ["element_id", "x", "y"]),
+  operation("transform_element", { element_id: id, x: number, y: number, scale_x: { type: "number", exclusiveMinimum: 0 }, scale_y: { type: "number", exclusiveMinimum: 0 } }, ["element_id", "x", "y", "scale_x", "scale_y"]),
+  operation("delete_element", { element_id: id }, ["element_id"]),
+];
+
 export const tools: Tool[] = [
   {
     name: "auth_status",
@@ -18,10 +45,10 @@ export const tools: Tool[] = [
   {
     name: "authenticate",
     description:
-      "Authenticate with Google to access Google Meet API. This will open a browser window for OAuth sign-in. Required before using other tools.",
+      "Authenticate with Google. Use force=true to renew OAuth consent after permission changes.",
     inputSchema: {
       type: "object" as const,
-      properties: {},
+      properties: { force: { type: "boolean", description: "Request new OAuth consent without deleting the existing token first." } },
     },
   },
   {
@@ -582,6 +609,31 @@ export const tools: Tool[] = [
       },
       required: ["presentation_id"],
     },
+  },
+  {
+    name: "create_presentation",
+    description: "Create an empty Google Slides presentation; returns its ID and URL.",
+    inputSchema: { type: "object", properties: { title: id }, required: ["title"] },
+  },
+  {
+    name: "inspect_presentation",
+    description: "Inspect slide and element IDs, positions, sizes, text, styles and revision before editing. Coordinates are in the units returned by Google; 1 point = 12,700 EMU.",
+    inputSchema: { type: "object", properties: { presentation_id: id }, required: ["presentation_id"] },
+  },
+  {
+    name: "edit_presentation",
+    description: "Apply Slides edits atomically. Set fill_color and/or outline_color on shapes using #RRGGBB. Coordinates and dimensions are points. Slide index is zero-based; move_slide index is based on the order BEFORE the move. replace_text replaces the entire text of an element and may change its existing formatting. move_element x/y are relative offsets; transform_element replaces the existing transform (including rotation) with absolute translation and scale relative to the element's intrinsic size. add_slide/add_text_box/add_shape return generated IDs; duplicate_slide returns its new ID in replies. For safety confirm before deleting. Use revision_id from inspect_presentation to reject stale edits. New IDs are available after this call, so add content to a new slide in a subsequent call.",
+    inputSchema: { type: "object", properties: { presentation_id: id, revision_id: id, operations: { type: "array", minItems: 1, maxItems: 100, items: { oneOf: slideOperations } } }, required: ["presentation_id", "operations"] },
+  },
+  {
+    name: "get_slide_preview",
+    description: "Render a slide preview as an image for visual inspection.",
+    inputSchema: { type: "object", properties: { presentation_id: id, slide_id: id }, required: ["presentation_id", "slide_id"] },
+  },
+  {
+    name: "add_slide_image",
+    description: "Insert a local PNG, JPEG or GIF privately using the configured Apps Script helper. No public sharing. Maximum 3 MiB; x/y/width/height are in points. The absolute path must be accessible on the MCP server host.",
+    inputSchema: { type: "object", properties: { presentation_id: id, slide_id: id, file_path: id, ...box }, required: ["presentation_id", "slide_id", "file_path", "x", "y", "width", "height"] },
   },
 
   // =========================================================================
